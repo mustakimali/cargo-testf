@@ -32,13 +32,15 @@ fn main() {
         let content =
             std::fs::read_to_string(result_path.clone()).expect("read name of failed tests");
         let failed = content.split(" ").collect::<Vec<_>>();
-        if !args.contains(&"--".to_string()) {
-            args.push("--".into());
+        if !failed.is_empty() {
+            if !args.contains(&"--".to_string()) {
+                args.push("--".into());
+            }
+            for f in failed {
+                args.push(f.to_string());
+            }
+            args.push("--exact".to_string());
         }
-        for f in failed {
-            args.push(f.to_string());
-        }
-        args.push("--exact".to_string());
     }
 
     let mut cmd = Command::new("cargo")
