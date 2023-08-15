@@ -26,7 +26,7 @@ fn main() {
     );
 
     let mut failed_tests = State::default();
-    let mut args = std::env::args().skip(1).collect::<Vec<_>>();
+    let mut args = std::env::args().skip(2).collect::<Vec<_>>();
 
     if result_path.exists() {
         let content =
@@ -171,5 +171,10 @@ test result: FAILED. 1 passed; 2 failed; 0 ignored; 0 measured; 0 filtered out; 
         }
 
         assert_eq!(f.names, &["test::fail", "test::inner_test::fail"]);
+    }
+
+    #[test]
+    fn fail() {
+        panic!("fail!");
     }
 }
