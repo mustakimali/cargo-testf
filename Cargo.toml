@@ -1,9 +1,10 @@
 [package]
 name = "cargo-testf"
-version = "0.1.2"
+version = "0.1.3"
 edition = "2021"
 description = "A wrapper for `cargo test` that remembers and runs failed tests"
 license = "MIT OR Apache-2.0"
+repository = "https://github.com/mustakimali/cargo-testf"
 
 [dependencies]
 # no dependency to be added to maintain a thin profile.
