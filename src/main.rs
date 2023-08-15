@@ -1,25 +1,46 @@
 use std::{
-    io::{BufRead, BufReader, Error, Read},
+    io::{BufRead, BufReader, Error},
+    path::{Path, PathBuf},
     process::{Command, Stdio},
 };
 
 fn main() {
-    let current_dir = std::env::current_dir()
-        .expect("get current dir")
-        .to_string_lossy()
-        .to_string();
+    let current_dir = std::env::current_dir().expect("get current dir");
     let out_dir = std::env::var("CARGO_TARGET_DIR")
+        .map(|p| Path::new(&p).to_path_buf())
         .or(find_out_dir())
         .unwrap_or_default();
     let toml_file = find_cargo_toml()
         .expect("unable to find a Cargo.toml, command must run inside a rust project");
+    let result_path = {
+        let mut root = out_dir.clone();
+        root.push(format!("testf-{}.txt", hash(&toml_file.to_string_lossy())));
+        root
+    };
     println!(
-        "Current Dir: {}\nOut Dir: {}\nCargo file: {}",
-        current_dir, out_dir, toml_file
+        "Current Dir: {}\nOut Dir: {}\nCargo file: {}\nResult file: {}",
+        current_dir.display(),
+        out_dir.display(),
+        toml_file.display(),
+        result_path.display()
     );
-    //cargo test -- test::works,test::pass --exact
+
     let mut failed_tests = State::default();
-    let args = std::env::args().skip(1).collect::<Vec<_>>();
+    let mut args = std::env::args().skip(1).collect::<Vec<_>>();
+
+    if result_path.exists() {
+        let content =
+            std::fs::read_to_string(result_path.clone()).expect("read name of failed tests");
+        let failed = content.split(" ").collect::<Vec<_>>();
+        if !args.contains(&"--".to_string()) {
+            args.push("--".into());
+        }
+        for f in failed {
+            args.push(f.to_string());
+        }
+        args.push("--exact".to_string());
+    }
+
     let mut cmd = Command::new("cargo")
         .arg("test")
         .args(args)
@@ -40,20 +61,36 @@ fn main() {
     }
 
     let result = cmd.wait().expect("run cargo test");
+
     if result.success() {
+        if result_path.exists() {
+            std::fs::remove_file(result_path).expect("remove result file");
+        }
         return;
     }
 
-    dbg!(&failed_tests);
+    let failed = failed_tests.names.join(" ");
+    std::fs::write(result_path, failed).expect("write failed tests");
 }
 
-fn find_out_dir() -> std::io::Result<String> {
+fn hash(input: &str) -> u64 {
+    const PRIME: u64 = 31;
+    let mut hash: u64 = 0;
+
+    for (_, c) in input.chars().enumerate() {
+        hash = hash.wrapping_mul(PRIME).wrapping_add(c as u64);
+    }
+
+    hash
+}
+
+fn find_out_dir() -> std::io::Result<PathBuf> {
     let mut root = std::env::current_dir()?;
 
     loop {
         let p = root.join("target");
         if p.exists() {
-            return Ok(p.to_string_lossy().to_string());
+            return Ok(p);
         }
         if !root.pop() {
             return Err(Error::new(
@@ -64,13 +101,13 @@ fn find_out_dir() -> std::io::Result<String> {
     }
 }
 
-fn find_cargo_toml() -> std::io::Result<String> {
+fn find_cargo_toml() -> std::io::Result<PathBuf> {
     let mut root = std::env::current_dir()?;
 
     loop {
         let p = root.join("Cargo.toml");
         if p.exists() {
-            return Ok(p.to_string_lossy().to_string());
+            return Ok(p);
         }
         if !root.pop() {
             return Err(Error::new(
@@ -79,10 +116,6 @@ fn find_cargo_toml() -> std::io::Result<String> {
             ));
         }
     }
-}
-
-fn cmd_for_failed_tests(names: Vec<&str>) -> String {
-    format!("cargo test -- {} --exact", names.join(" "))
 }
 
 #[derive(Default, Debug)]
@@ -104,28 +137,9 @@ fn failed_tests_s(l: &str, state: &mut State) {
     }
 }
 
-fn failed_tests(output: &str) -> Vec<&str> {
-    let mut names = Vec::new();
-    let mut f_count = 0;
-    for l in output.lines() {
-        if l == "failures:" {
-            f_count += 1;
-        }
-
-        if f_count == 2 && l.starts_with("    ") {
-            let name = l.trim().clone();
-            if name.len() > 0 {
-                names.push(name);
-            }
-        }
-    }
-
-    names
-}
-
 #[cfg(test)]
 mod test {
-    use crate::failed_tests;
+    use super::*;
 
     #[test]
     fn works() {
@@ -151,22 +165,11 @@ failures:
 
 test result: FAILED. 1 passed; 2 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
         "#;
-        let failed = failed_tests(output);
-
-        assert_eq!(failed, &["test::fail", "test::inner_test::fail"]);
-    }
-
-    mod inner_test {
-        #[test]
-        fn fail() {
-            panic!("fail");
+        let mut f = State::default();
+        for l in output.lines() {
+            failed_tests_s(l, &mut f);
         }
-    }
 
-    #[test]
-    fn pass() {}
-    #[test]
-    fn fail() {
-        panic!("fail");
+        assert_eq!(f.names, &["test::fail", "test::inner_test::fail"]);
     }
 }
