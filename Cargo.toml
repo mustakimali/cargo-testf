@@ -3,6 +3,7 @@ name = "cargo-testf"
 version = "0.1.0"
 edition = "2021"
 description = "A wrapper for `cargo test` that remembers and runs failed tests"
+license = "MIT OR Apache-2.0"
 
 [dependencies]
 # no dependency to be added to maintain a thin profile.
